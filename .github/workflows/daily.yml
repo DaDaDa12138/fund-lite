@@ -172,6 +172,11 @@ jobs:
         if: steps.daily.outcome == 'success'
         run: python -m fundana verify --fast
 
+      - name: 读当期发布
+        id: pub
+        if: always() && steps.gate.outputs.run == 'yes'
+        run: python scripts/publish_info.py --github-output >> "$GITHUB_OUTPUT"
+
       - name: 打包状态
         id: export
         if: always() && steps.gate.outputs.run == 'yes'
@@ -227,15 +232,10 @@ jobs:
         if: steps.daily.outcome == 'success'
         run: |
           set -euo pipefail
-          state=reports/publication_state.json
-          if [ ! -f "$state" ]; then
-            echo "没有 publication_state.json，跳过"
-            exit 0
-          fi
-          nav=$(jq -r '.nav_as_of // empty' "$state")
-          rev=$(jq -r '.revision_path // empty' "$state")
+          nav="${{ steps.pub.outputs.nav }}"
+          rev="${{ steps.pub.outputs.rev }}"
           if [ -z "$nav" ] || [ -z "$rev" ]; then
-            echo "状态文件缺字段，跳过"
+            echo "当期发布信息不全（nav=$nav rev=$rev），跳过归档"
             exit 0
           fi
           tag="report-$nav"
@@ -248,11 +248,7 @@ jobs:
       - name: 保活
         if: always() && steps.gate.outputs.run == 'yes'
         run: |
-          nav=""
-          if [ -f reports/publication_state.json ]; then
-            nav=$(jq -r '.nav_as_of // empty' reports/publication_state.json)
-          fi
-          FUNDANA_STATUS="${{ steps.daily.outcome }}" FUNDANA_NAV_AS_OF="$nav" python scripts/keepalive.py
+          FUNDANA_STATUS="${{ steps.daily.outcome }}" FUNDANA_NAV_AS_OF="${{ steps.pub.outputs.nav }}" python scripts/keepalive.py
 
       - name: 写运行摘要
         if: always()
@@ -266,6 +262,7 @@ jobs:
             echo "| 状态包 | ${{ steps.state.outputs.have }} |"
             echo "| 主流程 | ${{ steps.daily.outcome }} |"
             echo "| 状态导出 | ${{ steps.export.outcome }} |"
+            echo "| 当期发布 | nav ${{ steps.pub.outputs.nav }} |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -f reports/publication_state.json ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"

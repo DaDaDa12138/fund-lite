@@ -143,8 +143,11 @@ jobs:
           while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
             attempt=$((attempt + 1))
             echo "::group::daily 第 $attempt 次"
+            # runner 的 bash 自带 -e：管道非 0 会当场退出，必须显式关掉才读得到 PIPESTATUS
+            set +e
             python -m fundana daily --quiet $extra | tee run.json
             rc=${PIPESTATUS[0]}
+            set -e
             echo "::endgroup::"
             if [ "$rc" -eq 0 ]; then
               echo "attempts=$attempt" >> "$GITHUB_OUTPUT"

@@ -114,6 +114,12 @@ def check_daily(conn, business_date: str, cfg=None) -> dict[str, Any]:
     latest = {r["fcode"]: r["nav_date"] for r in conn.execute(
         "SELECT fcode, MAX(nav_date) AS nav_date FROM fund_nav_daily"
         " WHERE fcode IN (SELECT fcode FROM _cross_snap) GROUP BY fcode")}
+    # 最新净值日对应的净值：用来识别“值已经走到新交易日、日期列还停在旧交易日”的上游中间态
+    latest_nav = {r["fcode"]: r["unit_nav"] for r in conn.execute(
+        "SELECT n.fcode, n.unit_nav FROM fund_nav_daily n"
+        " JOIN (SELECT fcode, MAX(nav_date) AS d FROM fund_nav_daily"
+        "       WHERE fcode IN (SELECT fcode FROM _cross_snap) GROUP BY fcode) m"
+        " ON m.fcode=n.fcode AND m.d=n.nav_date")}
     out: list[dict[str, Any]] = []
     same_day = 0
     for r in rows:
@@ -133,13 +139,27 @@ def check_daily(conn, business_date: str, cfg=None) -> dict[str, Any]:
             status, delta, rel = "date_lag", None, None
         else:
             status, delta, rel = compare(r["a_nav"], b_nav, tol["nav_abs"], tol["nav_rel"])
+        lag_nav_date = None
+        if status == "mismatch" and sd is not None and latest.get(code):
+            # 上游状态列表刷新的中间态：净值列已经更新到新的交易日，净值日期列还停在旧交易日。
+            # 这种行 A 的值与它自己声明的旧日期本来就不该相等（实测 2026-11-17 下午 379 只
+            # 债基如此：0.9180 是 11-16 的净值，日期列却写 11-13），判 mismatch 是假阳性。
+            # 改记 date_lag —— 仍在汇总里可见、仍进 detail，但不再触发发布门禁。
+            lnd = latest[code]
+            lnav = latest_nav.get(code)
+            if lnd > sd.isoformat() and lnav is not None:
+                if compare(r["a_nav"], lnav, tol["nav_abs"], tol["nav_rel"])[0] == "pass":
+                    status, delta, rel = "date_lag", None, None
+                    lag_nav_date = lnd
         detail = None
         if status != "pass" and r["nav_date_md"]:
             # MM-DD vs YYYY-MM-DD：日期不一致时给出门禁可读的证据
-            detail = json.dumps({"status_snapshot_date": r["nav_date_md"],
-                                 "snap_date": sd.isoformat() if sd else None,
-                                 "nav_daily_date": nd.isoformat() if nd else None},
-                                ensure_ascii=False)
+            det = {"status_snapshot_date": r["nav_date_md"],
+                   "snap_date": sd.isoformat() if sd else None,
+                   "nav_daily_date": nd.isoformat() if nd else None}
+            if lag_nav_date:
+                det["status_value_matches_nav_date"] = lag_nav_date
+            detail = json.dumps(det, ensure_ascii=False)
         out.append({"check_id": _check_id(code, "unit_nav", business_date,
                                           "em_status_snapshot", "em_nav_snapshot"),
                     "business_date": business_date, "fcode": code,

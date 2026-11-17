@@ -87,6 +87,31 @@ class CheckDailyTest(unittest.TestCase):
         self.assertAlmostEqual(row["value_a"], 1.1440, places=6)
         self.assertAlmostEqual(row["value_b"], 1.2000, places=6)
 
+    def test_upstream_date_lag_is_not_mismatch(self):
+        # 上游状态列表刷新的中间态：净值已经走到 11-01，净值日期列还停在 10-30。
+        # 这种行 A 的值与它自己声明的旧日期本就不可比，不能判成两源打架。
+        self.conn.execute(
+            "INSERT INTO fund_nav_daily(fcode, nav_date, unit_nav, acc_nav, growth_pct, nav_source)"
+            " VALUES(?,?,?,?,?,?)",
+            ("000003", "2026-11-01", 1.2000, 1.31, 0.52, "em_b1"))
+        self.conn.execute(
+            "INSERT INTO src_snapshot_status(business_date, observed_at, code, name, type_text,"
+            " unit_nav, nav_date_md, purchase_status, redemption_status, raw_sha256)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ("2026-11-02", "2026-11-02T08:00:00+08:00", "000003", "样本债基", "债券型-混合二级",
+             "1.2000", "10-30", "开放申购", "开放赎回", "1" * 64))
+        self.conn.commit()
+        res = cross.check_daily(self.conn, "2026-11-02", self.cfg)
+        self.assertEqual(res["mismatch"], 0)
+        self.assertEqual(res["date_lag"], 1)
+        row = self.conn.execute(
+            "SELECT status, detail_json FROM nav_cross_check"
+            " WHERE fcode=? AND field='unit_nav' AND business_date=?",
+            ("000003", "2026-11-02")).fetchone()
+        self.assertEqual(row["status"], "date_lag")
+        det = json.loads(row["detail_json"])
+        self.assertEqual(det["status_value_matches_nav_date"], "2026-11-01")
+
     def test_rerun_is_idempotent(self):
         cross.check_daily(self.conn, "2026-11-01", self.cfg)
         first = self.conn.execute("SELECT COUNT(*) c FROM nav_cross_check").fetchone()["c"]

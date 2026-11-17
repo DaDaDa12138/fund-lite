@@ -19,7 +19,7 @@
 | 4 | 交易日闸门 | scripts/trading_day.py：非交易日退出 78，后续步骤全部跳过 | 正常收工 |
 | 5 | 拉状态包 | gh release download state（先 manifest，再按 manifest 列出的分片） | 没有 state release 且未开 bootstrap → 致命 |
 | 6 | 恢复状态 | scripts/state_bundle.py import：先逐片校验 sha256，再 zstd -d \| tar 解到仓库根 | 校验失败 → 致命（不会污染旧数据） |
-| 7 | 跑流水线 | python -m fundana daily --quiet \| tee run.json | 退出码非 0 → 后续发布步骤跳过，但仍会打包状态 |
+| 7 | 跑流水线 | python -m fundana daily --quiet \| tee run.json；被发布门禁拦下时最多重试 3 次、间隔 600s | 退出码非 0 → 后续发布步骤跳过，但仍会打包状态 |
 | 8 | 校验发布 | python -m fundana verify --fast（校验 .publication_current 指向的 validated.json） | 致命 |
 | 9 | 打包状态 | scripts/state_bundle.py export --slim：wal_checkpoint(TRUNCATE) → VACUUM → 切片 | 用 always() 兜住，尽量把进度带回去 |
 | 10 | 上传状态包 | 先传新分片 → 最后传 manifest（--clobber）→ 删掉不在 manifest 里的旧资产 | 同上 |
@@ -31,6 +31,12 @@
 
 **顺序不是随意的**：状态包上传排在 Pages 之前。数据库推进必须先落地——Pages 挂了下一轮重发即可，
 DB 没落地等于这一天的净值白跑。
+
+**为什么第 7 步要重试**：发布门禁里有一条跨源核对（东财状态列表 vs 东财分页净值快照），
+上游在刷新当天的列表时会出现「净值列已更新、净值日期列还停在上一交易日」的中间态，
+同一批基金在两列之间自相矛盾，门禁判 mismatch。实测 2026-11-17 14:51 那次手动运行因此被拦
+（379/16148 = 2.35% > 1%）。这种中间态通常几分钟到十几分钟就自洽，所以 workflow 只在
+「publish 阶段 ok=false」时重跑，最多 3 次；硬错误（库损坏、依赖缺失）不重试，直接失败。
 
 ## 2. 状态包（state Release）
 

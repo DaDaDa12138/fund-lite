@@ -131,11 +131,39 @@ jobs:
       - name: 跑每日流水线
         id: daily
         if: steps.gate.outputs.run == 'yes'
+        env:
+          RETRY_WAIT: "600"
+          MAX_ATTEMPTS: "3"
         run: |
           set -o pipefail
           extra=""
           if [ "${{ inputs.force }}" = "true" ]; then extra="--force"; fi
-          python -m fundana daily --quiet $extra | tee run.json
+          rc=1
+          attempt=0
+          while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
+            attempt=$((attempt + 1))
+            echo "::group::daily 第 $attempt 次"
+            python -m fundana daily --quiet $extra | tee run.json
+            rc=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            if [ "$rc" -eq 0 ]; then
+              echo "attempts=$attempt" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # 只有发布门禁拦下才重试：门禁拦的多半是上游数据还没刷完，隔十分钟重抓通常就一致了。
+            # 数据库损坏、依赖缺失这类硬错误重试没有意义，直接失败。
+            blocked=$(python -c 'import json;d=json.load(open("run.json"));print("yes" if any(s.get("stage")=="publish" and not s.get("ok") for s in d.get("stages",[])) else "no")' 2>/dev/null || echo no)
+            if [ "$blocked" != "yes" ]; then
+              echo "::error::非发布门禁失败（rc=$rc），不重试"
+              break
+            fi
+            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+              echo "::warning::发布被门禁拦下（第 $attempt 次），${RETRY_WAIT}s 后重试"
+              sleep "$RETRY_WAIT"
+            fi
+          done
+          echo "attempts=$attempt" >> "$GITHUB_OUTPUT"
+          exit 1
 
       - name: 校验发布
         if: steps.daily.outcome == 'success'

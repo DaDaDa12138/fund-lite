@@ -220,7 +220,12 @@ def _check_routes() -> int:
 
 def check(db_path: Path) -> int:
     failures = 0
-    cols = _columns(db_path)
+    # CI 上仓库里没有 var/db/fundana.db（.gitignore 掉的数据），此时降级为静态检查：
+    # 依赖真实表结构的两项跳过，但仍然检查前端键/字典/排序白名单/路由。
+    db_available = Path(db_path).exists()
+    if not db_available:
+        print("[0] 没有数据库 %s：跳过依赖表结构的检查，只做静态检查" % db_path)
+    cols = _columns(db_path) if db_available else {}
     metric_keys = {m["key"] for m in metrics_meta.payload()["metrics"]}  # 含别名
 
     # 1) 前端用了 sortTh("x") 的键，必须在指标字典里（或属于非指标列）
@@ -247,6 +252,8 @@ def check(db_path: Path) -> int:
             table = aliases.get(alias)
             if table is None:
                 bad.append("%s -> 未知别名 %s" % (key, alias))
+            elif not db_available:
+                continue
             elif col not in cols.get(table, set()):
                 bad.append("%s -> %s.%s 不存在" % (key, expr, ""))
         if bad:
@@ -275,10 +282,12 @@ def check(db_path: Path) -> int:
     else:
         print("    OK")
 
-    failures += _check_db_fields(cols)
+    if db_available:
+        failures += _check_db_fields(cols)
     failures += _check_routes()
 
-    print("\n结论：" + ("全部一致" if not failures else "%d 项不一致" % failures))
+    verdict = "全部一致" if not failures else "%d 项不一致" % failures
+    print("\n结论：" + verdict + ("" if db_available else "（缺数据库，表结构相关项未验证）"))
     return 1 if failures else 0
 
 

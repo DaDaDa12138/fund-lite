@@ -13,6 +13,8 @@
 
 ```
 config/            app.yaml, source_registry.yaml, field_policy.yaml
+.github/workflows/ ci.yml（语法+单测+契约）、daily.yml（每日抓取→筛选→计算→发布→Pages）
+scripts/           状态包打包/静态站生成/数据源冒烟/交易日判断/保活（GitHub Actions 用）
 fundana/
   cli.py           命令行入口（bootstrap/probe/collect/fuse/metrics/screen/publish/verify/replay/serve/stats/walkforward/turnover/exposure/factors/portfolio/fees/events/alerts）
   config.py        配置加载与 config_hash
@@ -31,7 +33,7 @@ web/              零构建单页前端（index.html/app.js/styles.css）
 docs/              architecture / decisions(ADR) / data-catalog / fusion-rules /
                    formula-contract / screening-rules / runbook /
                    audit-2026-11-review4.md（第四轮审查与报告优化）
-tests/             stdlib unittest（576 项，2026-11-06）
+tests/             stdlib unittest（654 项，2026-11-17；含状态包/静态站用例）
 var/               db / raw / freeze / state（运行时生成）
 reports/           runs/<run_id>/revisions/<uuid>/ + .publication_current
 ```
@@ -327,3 +329,27 @@ python3 -m unittest discover -s tests -v
 - 全链路上海时区（ADR-082）：业务日/时间戳/调度/导出统一按 Asia/Shanghai；裸时间按 +08:00
   解释，配置写其他时区启动即失败；采集排行请求与 CSV 文件名不再依赖宿主机本地日期。
 - 待办：MGOLD 评分（无公开接口，暂用东财评分）、**非债类型接入**（地基已完成：`fundana/fundtypes.py` 注册表 + `universe.types` 配置 + `python3 -m fundana types` 列缺口，见 ADR-077；混合型/货币型等仍缺采集域、风格体系与阈值标定。**偏债混合 200 只试点已做，结论不并入债券口径**，见 ADR-093 与 `docs/hybrid-pilot-2026-11.md`）、前端鉴权（**已完成**：可选 Bearer Token，ADR-092）、前瞻 cohort 需要真实时间成熟（30 天后才有第一份 30 天结论）。
+## 每日自动发布（GitHub Actions）
+
+本仓库自带一条**不依赖本机**的每日流水线：GitHub 托管 runner 每天 07:30（北京时间）
+从 Release 拉状态包 → 跑 `fundana daily`（抓净值 → 融合 → 指标 → 筛选）→ 发布报告 →
+把瘦身后的状态包推回 Release → 部署 Pages。本机只在首次接入时提供一次数据库。
+
+- 工作流：`.github/workflows/daily.yml`，定时 `30 23 * * *`（UTC，= 次日 07:30 CST）
+- 站点：Pages 上的最新一期（首页计数 + `summary.md` + 全量 `report.md` + 9 份 CSV + 历史归档）
+- 归档：每期一个 Release，tag `report-YYYY-MM-DD`（同日重跑覆盖附件）
+- 状态：滚动 `state` Release（分片 + `manifest.json`，单片 ≤1.9GiB；manifest 最后上传，保证中断可恢复）
+- 状态包瘦身：最近 20 期发布明细 + 最近 5 次筛选 + 120 天原始证据（8.94GB → 约 5.4GB）
+
+三种手动触发：
+
+~~~bash
+gh workflow run daily.yml -f force=true       # 忽略交易日闸门，强制跑
+gh workflow run daily.yml -f smoke_only=true  # 只验数据源连通性（海外 runner 能否拉到东财/证监会/中债）
+gh workflow run daily.yml -f bootstrap=true   # 没有状态包时允许空库起跑
+~~~
+
+首次接入、排障表、回滚与停机、已知限制见 `docs/runbook-github-actions.md`。
+
+本机等价命令仍是 `python3 -m fundana daily --quiet`；两者写同一套状态，切换时不要同时跑。
+

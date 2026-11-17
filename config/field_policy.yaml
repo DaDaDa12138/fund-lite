@@ -1,0 +1,34 @@
+# 字段优先级与冲突容差（融合层唯一裁决依据，可版本化）
+version: field-policy-2026.11.1
+tolerances:
+  nav_abs: 0.001
+  nav_rel: 0.01
+  return_abs_pp: 0.5
+  return_rel: 0.05
+  scale_rel: 0.05
+  scale_family_rel: 0.15
+  nav_date_soft_lag_days: 5
+fields:
+  estab_date:
+    priority: [em_jbgk, dj_detail, em_rank]
+  asset_scale_billion:
+    priority: [em_jbgk_family_sum, em_pzd]
+  asset_scale_share_class_billion:
+    priority: [em_jbgk, em_pzd]
+  mgr_fee_pct:
+    priority: [em_jbgk, em_rank, dj_profile]
+  trust_fee_pct:
+    priority: [em_jbgk, dj_profile]
+  sales_fee_pct:
+    priority: [em_jbgk, dj_profile]
+  purchase_status:
+    priority: [em_status_snapshot, dj_profile]
+    note: dj subscribe_status 语义未验证，仅记录不判定
+  nav:
+    priority: [em_pzd, dj_nav, em_lsjz]
+  bond_holding:
+    priority: [em_zqcc]
+  manager_current:
+    priority: [em_pzd, em_manager_list]
+  benchmark_text:
+    priority: [em_jbgk]

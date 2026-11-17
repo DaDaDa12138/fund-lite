@@ -1,0 +1,175 @@
+app:
+  timezone: Asia/Shanghai
+  code_version: "0.1.0"
+db:
+  path: var/db/fundana.db
+  wal: true
+  busy_timeout_ms: 15000
+paths:
+  raw_dir: var/raw/sha256
+  freeze_dir: var/freeze
+  state_dir: var/state
+  report_root: reports
+universe:
+  # 参与采集/融合/筛选/发布的基金类型（插件注册表见 fundana/fundtypes.py，ADR-077）。
+  # 首期只有 bond；新增类型必须先补齐采集域、风格体系、阈值标定与榜单语义，
+  # 否则 resolve() 会直接报错，而不是产出一份空榜。
+  types: [bond]
+collect:
+  # B1 快照只覆盖当日/前一交易日；跨多日停机时中间交易日的缺口，只对最近一次
+  # 成功筛选的 base_pass 候选做逐只 pzd 回补，避免全市场 8k 只重拉。
+  nav_backfill_max_funds: 200
+  nav_backfill_min_ratio: 0.5
+fetch:
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+  max_qps_per_host: 2
+  timeout_s: 20
+  retries: 3
+  retry_backoff_s: [1, 4, 9]
+  raw_retention_days: 30
+risk:
+  formula_contract: fundana-risk-2026.11.5
+  risk_free_rate: 0.0164
+  risk_free_source: chinabond_10y
+  risk_free_observed_at: "2026-10-25"
+  mar: 0.0
+  trading_days_per_year: 252
+  annualization_basis: 365.25
+  min_points_floor: 10
+  min_points_ratio: 0.8
+  max_gap_days: 14
+  coverage_grace_days: 7
+  caps:
+    sharpe: 5
+    sortino: 10
+    calmar: 20
+quality:
+  nav_age_limit_days: 10
+  style_min_observations: 15
+  max_short_lock_days: 90
+  detail_ttl_days: 56
+  holding_ttl_days: 7
+  # 结构化持仓证据（zqcc 季报）只有覆盖到该比例才参与风格判定：
+  # 半覆盖会让同一类基金一半按持仓、一半按名称判定，风格标签不可比。
+  style_holdings_min_coverage: 0.80
+# ADR-083：长期质量指标与风险标签。全部只做报告/观察，不直接改正式分；
+# 是否进入排序必须走 ADR-084 的评估协议与影子期。
+quality_profile:
+  mrar_months: 36              # 晨星 3 年评级口径：过去 36 个月月度有效收益
+  mrar_min_months: 36          # 不足 36 个月不发布，不用短窗口冒充
+  mrar_risk_aversion: 2.0
+  mrar_max_abs_monthly_return: 0.60  # 债券基金月度 ±60% 视为拆分/口径跳变，MRAR 留空
+  mrar_rf_source: config       # 与风险指标共用 risk.risk_free_rate，避免两套无风险利率
+  alpha_min_obs: 200            # 365 个自然日约 241 个交易日；250 会让所有基金都不可信
+  alpha_hac_lags: 5
+  alpha_min_r2: 0.05           # 解释力过低时 alpha/beta 都不可信
+  alpha_candidate_min_r2: 0.30 # 只有解释力足够时才允许进入排序实验
+  tail_min_obs: 100
+  protocol_version: eval-v1
+screen:
+  # 动态分位门槛的应用规则：composite_and_k_of_n（默认，综合分必须过绝对底线 60，
+  # 其余 6 项至少 5 项过各自分位）或 all（架构书字面：全部维度都过）。
+  # v2 起维度为 6 项（annual/sharpe/sortino/calmar/non_negative/fee）；mdd/vol 已删——
+  # 它们与 calmar/vol 相关 0.62–0.89，且固定线已覆盖（ADR-052）。
+  dynamic_gate_rule: composite_and_k_of_n
+  # 排序 profile：current=现行 rank_score；实验 profile 只在 research/shadow 中
+  # 生成，不写 screen_pick，切换生产必须通过 ADR-084 的晋级门槛。
+  ranking_profile: current
+  # L8 经理后过滤：现任经理最短职业年限（天）。缺值不阻断（缺失≠差）。
+  manager_career_min_days: 365
+  manager_career_require_known: false
+  # P0-3：4→5。k=4 在 2026-11-02 批次只挡 15 只，6 维几乎不咬合；k=5 挡 24 只。
+  dynamic_min_dimensions_passed: 5
+  # 增强债：相对准入之外，再要求 7 项严格口径至少通过 5 项（ADR-080）。
+  # 0=关闭；5 为历史 2017–2025 九队列回测的最优平衡点，6 会过度集中。
+  enhanced_strict_min: 5
+  formal_target_max: 320
+  group_min_ratio: 0.25
+  # §11.6 单一原因缓释：只有"恰好一项硬比较失败"且幅度极小时才放行，
+  # 命中后留 relief 标记；两项及以上失败一律不缓释。
+  # v2：不再给"信心分"打折（该字段已改为只读的数据质量分，不参与排序）。
+  relief_enabled: false
+  # §11.9 研究优先池：接近门槛但不进正式榜的基金，单独给研究入口（每公司≤2）
+  research_pool_min: 24
+  research_pool_max: 36
+validation:
+  # §16.1 跨端点校验：每日用第二来源复核 NAV 与阶段收益
+  cross_daily: true
+  cross_sample_n: 60
+  nav_abs: 0.001
+  nav_rel: 0.01
+  return_abs_pp: 0.5
+  return_rel: 0.05
+  nav_date_soft_lag_days: 5
+evidence:
+  # P0-7：报告首屏引用的历史证据。只在 as_of 与本次 run 的 nav_as_of 一致时展示；
+  # 数字来自 reports/analysis/walkforward-2026-11-10.json（metric_end_date 前视 bug 修复后重算）。
+  as_of: "2026-06-30"
+  cohorts: 6
+  rank_ic_annual: 0.3722
+  rank_ic_mdd: 0.0
+  # 6 个半年队列不足以估计 DSR；不要用旧 12 队列的 0.660 冒充当前证据。
+  dsr: null
+  dsr_threshold: 0.95
+  n_trials: null
+  source: "reports/analysis/walkforward-2026-11-10.json"
+  status: "recomputed_6cohorts_2026-11-10"
+  status_note: "6 half-year cohorts 2020-06-30..2025-06-30, horizon 365d, top 118 equal weight; DSR not estimated"
+  survivorship:
+    as_of: "2026-11-06"
+    cohorts: 6
+    liquidated_funds: 445
+    lifecycle_liquidated_total: 1819
+    lifecycle_with_nav: 458
+    rank_ic_annual_ex_survivors: 0.3780
+    rank_ic_annual_with_liquidated: 0.3712
+    rank_ic_annual_delta: -0.0068
+    composite_ic_ex_survivors: 0.1933
+    composite_ic_with_liquidated: 0.1936
+    note: "only EID-confirmed liquidated funds with public NAV; merged sample is 0"
+scheduler:
+  # 日更失败后的有限重试：只针对网络/数据源短暂故障，publish 阶段失败不重试。
+  # 这两个键是运维参数，不进入 config_hash（不影响筛选结果）。
+  max_attempts: 3
+  retry_delay_s: 900
+gate:
+  # §16.8 发布阻断矩阵：strict=命中 block 不切换 current；warn=只记录
+  mode: strict
+  require_cross_check: true
+  source_max_age_days: 3
+  metric_coverage_min: 0.90
+  mismatch_ratio_max: 0.01
+forward:
+  # §15 前瞻 cohort：H=[30,90,180,365]，not_ready 不得当 0
+  horizons_days: [30, 90, 180, 365]
+  control_risk_neighbors: 3
+  min_points_ratio: 0.8
+publish:
+  commit_pointer: .publication_current
+  manifest_filename: validated.json
+ops:
+  # P1-10：失败告警出口。留空只写 var/state/alerts.jsonl；填 webhook 后同时 POST JSON。
+  webhook_url: ""
+  # scheduler 心跳历史保留天数（JSONL 按大小轮转，至少保留最近一份）。
+  heartbeat_history_days: 30
+maintenance:
+  # P1-5：维护采集周期（天）。daily 末尾按 due 触发，只采最新榜单/研究池的基金。
+  # 持仓/规模按季度（80 天，留出披露滞后），档案/费率/经理按月（30 天）。
+  tasks:
+    profile: {interval_days: 30}
+    fee: {interval_days: 30}
+    scale: {interval_days: 80}
+    manager: {interval_days: 30}
+    holding: {interval_days: 80}
+api:
+  # 0.0.0.0 = 监听所有网卡，便于局域网访问；只想本机用改回 127.0.0.1
+  host: 0.0.0.0
+  port: 8091
+  # 可选 Bearer Token；留空 = 只读无鉴权（内网用法）。配置后除 healthz 外所有 API 都要求
+  # Authorization: Bearer <token>。前端首次 401 时会提示输入并保存在本机 localStorage（ADR-092）。
+  auth_token: ""
+  page_size_default: 50
+  page_size_max: 200
+  web_dir: web
+  query_timeout_s: 3.0
+  query_max_limit: 1000

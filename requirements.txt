@@ -1,0 +1,3 @@
+# 运行时依赖（fundana 包本体只需要这两个）
+PyYAML>=6.0
+requests>=2.31

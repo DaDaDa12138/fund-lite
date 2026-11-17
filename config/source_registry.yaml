@@ -1,0 +1,189 @@
+# 数据源注册表：每个适配器必须在此声明，probe 依据此表逐源验证业务解析
+version: source-registry-2026.11.2
+sources:
+  em_directory:
+    domain: directory
+    method: GET
+    url: "https://fund.eastmoney.com/js/fundcode_search.js"
+    encoding: utf-8-sig
+    headers: {}
+    ttl_days: 1
+    rate_qps: 2
+    parser: em_directory
+    note: 全量名录 + 二级类型（每日漂移，禁止硬编码）
+  em_status_snapshot:
+    domain: status
+    method: GET
+    url: "https://fund.eastmoney.com/Data/Fund_JJJZ_Data.aspx?t=8&page=1,50000&js=reData&sort=fcode,asc"
+    encoding: utf-8
+    headers:
+      Referer: "https://fund.eastmoney.com/"
+    ttl_days: 1
+    rate_qps: 1
+    parser: em_status
+    note: 全市场申赎状态+当日净值，单请求约 2.9MB
+  em_jbgk:
+    domain: profile
+    method: GET
+    url: "https://fundf10.eastmoney.com/jbgk_{code}.html"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/"
+    ttl_days: 56
+    rate_qps: 2
+    parser: em_jbgk
+    note: 静态档案（成立日/规模/三项计提费率/业绩基准）
+  em_pzd:
+    domain: nav
+    method: GET
+    url: "https://fund.eastmoney.com/pingzhongdata/{code}.js"
+    encoding: utf-8
+    headers:
+      Referer: "https://fund.eastmoney.com/"
+    ttl_days: 1
+    rate_qps: 2
+    parser: em_pzd
+    note: 单请求返回全历史净值+日增长率+规模变动+现任经理
+  em_nav_snapshot:
+    domain: nav
+    url: https://fund.eastmoney.com/Data/Fund_JJJZ_Data.aspx?t=1&lx=1&page=1,50000&onlySale=0&js=reData&sort=fcode,asc
+    encoding: utf-8
+    ttl_days: 0.25
+    rate_qps: 1
+    parser: nav_snapshot
+    note: B1 全市场当日净值快照（含官方日增长率与申赎状态），日更主源
+    headers:
+      Referer: https://fund.eastmoney.com/
+  em_rank:
+    domain: rank
+    method: GET
+    url: "https://fund.eastmoney.com/data/rankhandler.aspx"
+    encoding: utf-8
+    headers:
+      Referer: "https://fund.eastmoney.com/data/fundranking.html"
+    ttl_days: 1
+    rate_qps: 1
+    parser: em_rank
+    note: 阶段收益/规模/费率横截面，用于交叉校验
+  em_jjfl:
+    domain: fee
+    method: GET
+    url: "https://fundf10.eastmoney.com/jjfl_{code}.html"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/"
+    ttl_days: 30
+    rate_qps: 2
+    parser: em_jjfl
+    note: 申购/认购/赎回阶梯 + 三项计提费率（固定费单独存 fixed_cny）
+  dj_nav:
+    domain: validation
+    method: GET
+    url: "https://danjuanfunds.com/djapi/fund/nav/history/{code}?page=1&size=1000"
+    encoding: utf-8
+    headers:
+      Referer: "https://danjuanfunds.com/"
+    ttl_days: 0.25
+    rate_qps: 1
+    parser: dj_nav
+    note: 跨源校验第二源（蛋卷历史净值，单页 1000 条；403 时降级 em_lsjz）
+  em_lsjz:
+    domain: validation
+    method: GET
+    url: "https://api.fund.eastmoney.com/f10/lsjz?fundCode={code}&pageIndex=1&pageSize=20"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/"
+    ttl_days: 0.25
+    rate_qps: 1
+    parser: em_lsjz
+    note: 跨源校验降级源（东财 F10 历史净值，每页固定 20 条）
+  em_gmbd:
+    domain: scale
+    method: GET
+    url: "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=gmbd&code={code}"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/gmbd_{code}.html"
+    ttl_days: 30
+    rate_qps: 2
+    parser: em_gmbd
+    note: 规模变动全历史（期末份额/期末净资产，按报告期；pzd 只有最近 5 季）
+  em_jjjl:
+    domain: manager
+    method: GET
+    url: "https://fundf10.eastmoney.com/jjjl_{code}.html"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/"
+    ttl_days: 30
+    rate_qps: 2
+    parser: em_jjjl
+    note: 基金经理变动一览（历任经理/起止日期/任职天数/任职回报）
+  em_zqcc:
+    domain: holding
+    method: GET
+    url: "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code={code}&topline=10"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/ccmx1_{code}.html"
+    ttl_days: 7
+    rate_qps: 2
+    parser: em_zqcc
+    note: 债券持仓（可转债代码前缀可量化转债仓位）
+  em_zqcc_year:
+    domain: holding
+    method: GET
+    url: "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code={code}&topline=10&year={year}"
+    encoding: utf-8
+    headers:
+      Referer: "https://fundf10.eastmoney.com/ccmx1_{code}.html"
+    ttl_days: 30
+    rate_qps: 2
+    parser: em_zqcc_year
+    note: 债券持仓历史（按年返回四个季度，用于持仓历史/暴露归因）
+  em_index_kline:
+    domain: index
+    method: GET
+    url: "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.{code}&fields1=f1,f2,f3&fields2=f51,f53&klt=101&fqt=1&beg=2015-01-01&end=20500101"
+    encoding: utf-8
+    headers:
+      Referer: "https://quote.eastmoney.com/"
+    ttl_days: 1
+    rate_qps: 1
+    parser: em_index_kline
+    note: 指数日线（国债/企债/中证转债），风格因子归因的因子收益来源
+  csrc_lifecycle:
+    domain: lifecycle
+    method: GET
+    url: "http://eid.csrc.gov.cn/fund/disclose/advanced_search_report.do"
+    encoding: utf-8
+    headers:
+      Referer: "http://eid.csrc.gov.cn/fund/disclose/index.html"
+    ttl_days: 3650
+    rate_qps: 1
+    parser: csrc_lifecycle
+    note: 证监会基金公告检索（清算/合同终止/合并）；不带 fundCode 时窗口≤30 天，aoData 必须是 DataTables 数组
+  csrc_lifecycle_pdf:
+    domain: lifecycle
+    method: GET
+    url: "http://eid.csrc.gov.cn/fund/disclose/instance_show_pdf_id.do?instanceid={code}"
+    encoding: utf-8
+    headers:
+      Referer: "http://eid.csrc.gov.cn/fund/disclose/index.html"
+    ttl_days: 3650
+    rate_qps: 1
+    parser: csrc_pdf
+    note: 清算报告 PDF；pdftotext 解析“最后运作日/进入清算期”，原始 PDF 落 raw_object
+  cb_new_composite:
+    domain: index
+    method: POST
+    url: "https://yield.chinabond.com.cn/cbweb-mn/indices/singleIndexQuery"
+    encoding: utf-8
+    headers:
+      Referer: "https://yield.chinabond.com.cn/"
+      Origin: "https://yield.chinabond.com.cn"
+    ttl_days: 1
+    rate_qps: 1
+    parser: chinabond_index
+    note: 中债-新综合财富（总值）指数；公开 JSON 接口，POST form，无 token；作为债券总回报基准

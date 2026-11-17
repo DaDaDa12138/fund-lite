@@ -1,0 +1,3 @@
+-r requirements.txt
+# 仅 GitHub Actions 建站用（scripts/site_build.py），本地 CI 不需要
+markdown>=3.6

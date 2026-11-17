@@ -50,6 +50,24 @@ def _now_cn() -> datetime:
     return datetime.now(CN)
 
 
+def _nav_as_of_from_db(db_path: Path, publication_id: str | None) -> str | None:
+    """publication_state.json 里没有 nav_as_of，只能按 publication_id 回查 publication 表。"""
+    if not publication_id:
+        return None
+    try:
+        conn = sqlite3.connect("file:%s?mode=ro" % Path(db_path), uri=True, timeout=60)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute("SELECT nav_as_of FROM publication WHERE publication_id = ?",
+                           (publication_id,)).fetchone()
+        return str(row[0]) if row and row[0] else None
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+
 def _db_stats(conn: sqlite3.Connection, db_path: Path) -> dict[str, Any]:
     page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
     page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
@@ -302,6 +320,7 @@ def export(
 
     state_path = root / "reports/publication_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    nav_as_of = state.get("nav_as_of") or _nav_as_of_from_db(db_path, state.get("publication_id"))
     stamp = _now_cn().strftime("%Y%m%dT%H%M%S")
     members = _collect_members(root, keep_publications, db_path=db_path)
 
@@ -377,7 +396,7 @@ def export(
         "stamp": stamp,
         "created_at": _now_cn().isoformat(timespec="seconds"),
         "as_of": state.get("committed_at"),
-        "nav_as_of": state.get("nav_as_of"),
+        "nav_as_of": nav_as_of,
         "generation": state.get("generation"),
         "publication_id": state.get("publication_id"),
         "db_bytes": db_path.stat().st_size,

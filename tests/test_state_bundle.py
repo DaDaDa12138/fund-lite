@@ -166,6 +166,13 @@ class TestExportImport(unittest.TestCase):
         self.assertTrue((self.target / "reports/.publication_current").is_symlink())
         self.assertFalse((self.out / manifest["parts"][0]["name"]).exists())
 
+
+    def test_nav_as_of_falls_back_to_publication_table(self):
+        """publication_state.json 不带 nav_as_of 时必须回查 publication 表，否则 manifest 里是 null。"""
+        (self.root / "reports/publication_state.json").write_text(
+            json.dumps({"generation": 3, "publication_id": "p03"}), encoding="utf-8")
+        result = self.mod.export(self.root, self.out, part_size=512)
+        self.assertEqual(result["manifest"]["nav_as_of"], AS_OF)
     def test_import_rejects_tampered_part(self):
         self.mod.export(self.root, self.out, part_size=512)
         manifest = json.loads((self.out / "manifest.json").read_text(encoding="utf-8"))

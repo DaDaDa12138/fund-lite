@@ -1,0 +1,15 @@
+# 运行期数据：状态包负责搬运，不进 git
+var/
+reports/
+site/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 本机临时脚本（保留在磁盘上，只是不提交）
+.tmp_*
+tmp_p*.py

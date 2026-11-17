@@ -1,0 +1,20 @@
+[Unit]
+Description=Fund-ANA web (localhost:8091)
+Documentation=file://~/fund/docs/web.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=fundana-alert@%N.service
+
+[Service]
+Type=simple
+WorkingDirectory=~/fund
+Environment=TZ=Asia/Shanghai
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/python3 -u -m fundana serve --port 8091
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

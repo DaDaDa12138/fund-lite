@@ -1,0 +1,8 @@
+[Unit]
+Description=Fund-ANA failure alert for %i
+
+[Service]
+Type=oneshot
+WorkingDirectory=~/fund
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/python3 -m fundana notify --unit %i

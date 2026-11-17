@@ -54,18 +54,20 @@ def _nav_as_of_from_db(db_path: Path, publication_id: str | None) -> str | None:
     """publication_state.json 里没有 nav_as_of，只能按 publication_id 回查 publication 表。"""
     if not publication_id:
         return None
+    # 不要用 mode=ro：WAL 库在上一个连接干净关闭后 -wal/-shm 已被删，只读打开会在
+    # 首次查询时失败（实测 CI 上 nav_as_of 因此静默变 null）。这里只做一次 SELECT，
+    # 用普通连接最稳，代价是可能重建空的 -wal/-shm，关闭即清。
     try:
-        conn = sqlite3.connect("file:%s?mode=ro" % Path(db_path), uri=True, timeout=60)
-    except sqlite3.Error:
+        conn = sqlite3.connect(str(db_path), timeout=60)
+        try:
+            row = conn.execute("SELECT nav_as_of FROM publication WHERE publication_id = ?",
+                               (publication_id,)).fetchone()
+            return str(row[0]) if row and row[0] else None
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        print("warning: nav_as_of lookup failed: %s" % exc, file=sys.stderr)
         return None
-    try:
-        row = conn.execute("SELECT nav_as_of FROM publication WHERE publication_id = ?",
-                           (publication_id,)).fetchone()
-        return str(row[0]) if row and row[0] else None
-    except sqlite3.Error:
-        return None
-    finally:
-        conn.close()
 
 
 def _db_stats(conn: sqlite3.Connection, db_path: Path) -> dict[str, Any]:

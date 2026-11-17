@@ -103,6 +103,10 @@ gh workflow run daily.yml -f bootstrap=true
 # 停止每日发布
 gh workflow disable daily.yml --repo OWNER/REPO
 
+# 先把最新状态包拉回本机，否则本机 DB 还停在切流那天，接管后第一次运行会按旧库算增量
+gh release download state --dir /tmp/state-latest
+python scripts/state_bundle.py import --root . --src /tmp/state-latest
+
 # 恢复本机调度（切换回来后本机才是唯一写库方）
 systemctl --user enable --now fundana-scheduler.service
 bash scripts/scheduler.sh status

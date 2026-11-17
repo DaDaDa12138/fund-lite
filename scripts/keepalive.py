@@ -40,6 +40,11 @@ def _req(method: str, url: str, token: str, payload: dict | None = None) -> tupl
         return exc.code, parsed
 
 
+def _now() -> str:
+    from datetime import datetime, timedelta, timezone
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+
+
 def main() -> int:
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -67,7 +72,8 @@ def main() -> int:
         "run_id": os.environ.get("GITHUB_RUN_ID", ""),
         "status": os.environ.get("FUNDANA_STATUS", ""),
         "nav_as_of": os.environ.get("FUNDANA_NAV_AS_OF", ""),
-        "at": os.environ.get("GITHUB_RUN_STARTED_AT", ""),
+        # GITHUB_RUN_STARTED_AT 不是 runner 的默认环境变量，取不到就自己记一个东八区时间
+        "at": os.environ.get("GITHUB_RUN_STARTED_AT") or _now(),
     }
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     body = {

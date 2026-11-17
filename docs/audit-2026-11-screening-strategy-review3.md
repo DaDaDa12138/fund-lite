@@ -846,7 +846,7 @@ caveat（反向，至少 1 条）：
 
 ### 15.3 复现
 
-    cd ~/fund
+    cd "$(git rev-parse --show-toplevel)"
     python3 -m fundana screen --profile bond_v1
     python3 -m fundana publish
     python3 reports/analysis/audit_2026_11_review3/generate_evidence.py

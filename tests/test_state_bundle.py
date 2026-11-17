@@ -224,3 +224,54 @@ class TestExportAlternateDb(unittest.TestCase):
             conn.close()
         self.assertEqual(n, 3)
 
+
+@unittest.skipUnless(shutil.which("zstd"), "需要 zstd 命令行")
+class TestRedact(unittest.TestCase):
+    """状态包是公开资产：自选清单与手写备注必须在导出前清掉。"""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.root = base / "repo"
+        self.out = base / "dist"
+        self.db = self.root / "var/db/fundana.db"
+        _make_db(self.db, runs=2)
+        conn = sqlite3.connect(str(self.db))
+        try:
+            conn.executescript("CREATE TABLE fund_watchlist(fcode TEXT, added_at TEXT, source TEXT, note TEXT);")
+            conn.execute("INSERT INTO fund_watchlist VALUES(?,?,?,?)",
+                         ("000032", "2026-10-31T21:13:25+08:00", "cli", None))
+            conn.execute("INSERT INTO fund_watchlist VALUES(?,?,?,?)",
+                         ("000003", "2026-10-31T21:13:56+08:00", "rankings", "转债观察"))
+            conn.commit()
+        finally:
+            conn.close()
+        self.mod = _load()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _watchlist(self, path: Path) -> int:
+        conn = sqlite3.connect(str(path))
+        try:
+            return int(conn.execute("SELECT COUNT(*) FROM fund_watchlist").fetchone()[0])
+        finally:
+            conn.close()
+
+    def test_export_clears_personal_tables(self):
+        result = self.mod.export(self.root, self.out, part_size=512)
+        self.assertEqual(result["redacted"]["fund_watchlist"], 2)
+        self.assertEqual(self._watchlist(self.db), 0)
+        conn = sqlite3.connect(str(self.db))
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(fund_watchlist)")]
+        finally:
+            conn.close()
+        self.assertIn("note", cols)
+
+    def test_keep_personal_is_explicit_opt_out(self):
+        result = self.mod.export(self.root, self.out, part_size=512, do_redact=False)
+        self.assertNotIn("redacted", result)
+        self.assertEqual(self._watchlist(self.db), 2)
+

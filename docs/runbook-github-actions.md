@@ -3,7 +3,7 @@
 本仓库的每日流水线**完全跑在 GitHub 托管 runner 上**：抓净值、筛选、计算、发布报告，
 不依赖任何一台常开的本机。本机只作为历史数据库的源头（bootstrap 一次）。
 
-- 仓库：https://github.com/OWNER/REPO （public）
+- 仓库：本仓库（默认 public；fork 后所有 gh 命令在仓库目录内执行，会自动使用当前仓库，不需要改任何 slug）
 - workflow：.github/workflows/daily.yml
 - 触发：cron "30 23 * * *"（UTC）= 次日 **07:30 北京时间**，外加手动 workflow_dispatch
 - 站点：Settings → Pages（部署产物无 JS、无 CDN，只是报告快照）
@@ -72,7 +72,7 @@ DB 没落地等于这一天的净值白跑。
 
 ~~~bash
 # 普通补跑（走交易日闸门）
-gh workflow run daily.yml --repo OWNER/REPO
+gh workflow run daily.yml
 
 # 忽略闸门，强制跑（周末/节假日试跑）
 gh workflow run daily.yml -f force=true
@@ -101,7 +101,7 @@ gh workflow run daily.yml -f bootstrap=true
 
 ~~~bash
 # 停止每日发布
-gh workflow disable daily.yml --repo OWNER/REPO
+gh workflow disable daily.yml
 
 # 先把最新状态包拉回本机，否则本机 DB 还停在切流那天，接管后第一次运行会按旧库算增量
 gh release download state --dir /tmp/state-latest
@@ -128,9 +128,9 @@ rm -f var/db/fundana.bootstrap.db
 du -sh dist/state
 
 # 2) 建 state release 并上传（分片在前，manifest 在后）
-gh release create state dist/state/state-*.part.* --repo OWNER/REPO \
+gh release create state dist/state/state-*.part.* \
   --title "fundana state" --notes "滚动状态包：每日覆盖。manifest.json 最后上传。"
-gh release upload state dist/state/manifest.json --repo OWNER/REPO
+gh release upload state dist/state/manifest.json
 
 # 3) 触发一轮，同日再触发一轮验幂等（第二轮的闸门会因 controlled_skip 提前收工）
 gh workflow run daily.yml -f bootstrap=true

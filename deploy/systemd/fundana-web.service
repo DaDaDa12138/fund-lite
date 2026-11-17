@@ -1,13 +1,14 @@
+# 参考副本：真正的 unit 由 scripts/install-autostart.sh 按仓库实际路径渲染，
+# 写入 ~/.config/systemd/user/。%h 是 systemd 的用户 home 说明符。
 [Unit]
 Description=Fund-ANA web (localhost:8091)
-Documentation=file://~/fund/docs/web.md
+Documentation=file://%h/fund/docs/web.md
 After=network-online.target
 Wants=network-online.target
-OnFailure=fundana-alert@%N.service
 
 [Service]
 Type=simple
-WorkingDirectory=~/fund
+WorkingDirectory=%h/fund
 Environment=TZ=Asia/Shanghai
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/python3 -u -m fundana serve --port 8091

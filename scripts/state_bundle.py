@@ -115,6 +115,33 @@ def _sha256_file(path: Path) -> str:
 
 # --------------------------------------------------------------------------- slim
 
+# 状态包会作为 Release 资产公开发布，导出前必须清掉个人使用痕迹。
+# fund_watchlist 是网页「自选」表（fcode + 手写备注），不属于项目数据。
+PERSONAL_TABLES = ("fund_watchlist",)
+
+
+def redact(db_path: Path, tables: Iterable[str] = PERSONAL_TABLES) -> dict[str, int]:
+    """清空个人痕迹表，返回 {表名: 删除行数}。
+
+    只删行不删表：schema 必须与导入方一致，迁移才能照常跑。
+    删完由 slim 的 VACUUM（或导出的 checkpoint）回收空闲页，避免残留字节被人 strings 出来。
+    """
+    conn = sqlite3.connect(str(db_path), timeout=120)
+    try:
+        removed: dict[str, int] = {}
+        for table in tables:
+            if not _table_exists(conn, table):
+                continue
+            n = conn.execute("SELECT COUNT(*) FROM %s" % table).fetchone()[0]
+            if n:
+                conn.execute("DELETE FROM %s" % table)
+            removed[table] = int(n)
+        conn.commit()
+        return removed
+    finally:
+        conn.close()
+
+
 def slim(
     db_path: Path,
     keep_publications: int = 20,
@@ -293,6 +320,7 @@ def export(
     keep_publications: int = 20,
     keep_raw_days: int = 120,
     part_size: int = PART_SIZE_DEFAULT,
+    do_redact: bool = True,
 ) -> dict[str, Any]:
     root = Path(root)
     out_dir = Path(out_dir)
@@ -306,6 +334,10 @@ def export(
             stale.unlink()
 
     result: dict[str, Any] = {"db_path": str(db_path)}
+    if do_redact:
+        result["redacted"] = redact(db_path)
+        if any(result["redacted"].values()):
+            print("redacted: %s" % result["redacted"], file=sys.stderr)
     if do_slim:
         result["slim"] = slim(db_path, keep_publications=keep_publications,
                               keep_raw_days=keep_raw_days, vacuum=True)
@@ -521,6 +553,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     p_exp.add_argument("--keep-publications", type=int, default=20)
     p_exp.add_argument("--keep-raw-days", type=int, default=120)
     p_exp.add_argument("--part-size", type=int, default=PART_SIZE_DEFAULT)
+    p_exp.add_argument("--keep-personal", action="store_true",
+                       help="保留自选/备注等个人表（只用于本机私有备份，不要推到公开 Release）")
 
     p_imp = sub.add_parser("import", help="校验 + 解压回工作目录")
     p_imp.add_argument("--root", default=str(ROOT_DEFAULT))
@@ -543,8 +577,9 @@ def main(argv: Iterable[str] | None = None) -> int:
                      do_slim=args.slim,
                      keep_publications=args.keep_publications,
                      keep_raw_days=args.keep_raw_days,
-                     part_size=args.part_size)
-        _print({k: out[k] for k in ("db_path", "manifest") if k in out})
+                     part_size=args.part_size,
+                      do_redact=not args.keep_personal)
+        _print({k: out[k] for k in ("db_path", "redacted", "manifest") if k in out})
         return 0
     if args.cmd == "import":
         _print(import_(Path(args.root), Path(args.src)))

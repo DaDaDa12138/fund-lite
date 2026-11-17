@@ -2,7 +2,7 @@
 
 `python3 -m fundana serve` 启动后访问 <http://127.0.0.1:8091/>。`config/app.yaml` 的 `api.host`
 默认 `0.0.0.0`，因此同一网段的设备可用启动日志里打印的局域网地址访问（本机实测
-<http://127.0.0.1:8091/>）；只想本机访问就把 `api.host` 改回 `127.0.0.1`。
+<http://<本机内网 IP>:8091/>）；只想本机访问就把 `api.host` 改回 `127.0.0.1`。
 
 只读；服务与 `collect/fuse/screen/publish` 共用同一个 SQLite 文件（WAL 模式，读不阻塞写）。
 默认无鉴权；在 `config/app.yaml` 设置 `api.auth_token` 后，除 `/api/v1/healthz` 外所有 API 都要求

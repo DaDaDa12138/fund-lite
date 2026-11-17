@@ -1,20 +1,20 @@
+# 参考副本：真正的 unit 由 scripts/install-autostart.sh 按仓库实际路径渲染，
+# 写入 ~/.config/systemd/user/。这里的 %h 是 systemd 的用户 home 说明符，
+# 默认按 ~/fund 假定检出位置；换目录请直接用 install-autostart.sh 安装，不要手改这份。
 [Unit]
 Description=Fund-ANA daily scheduler
-Documentation=file://~/fund/docs/runbook.md
+Documentation=file://%h/fund/docs/runbook.md
 After=network-online.target
 Wants=network-online.target
-OnFailure=fundana-alert@%N.service
 
 [Service]
-Type=notify
-WorkingDirectory=~/fund
+Type=simple
+WorkingDirectory=%h/fund
 Environment=TZ=Asia/Shanghai
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/python3 -u -m fundana scheduler
 Restart=on-failure
 RestartSec=5
-WatchdogSec=300
-NotifyAccess=all
 TimeoutStartSec=30
 TimeoutStopSec=15
 

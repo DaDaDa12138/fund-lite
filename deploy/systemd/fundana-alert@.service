@@ -1,8 +1,10 @@
+# 参考副本：真正的 unit 由 scripts/install-autostart.sh 按仓库实际路径渲染。
+# 模板实例 unit，%i 是被告警的 unit 名，%h 是 systemd 的用户 home 说明符。
 [Unit]
 Description=Fund-ANA failure alert for %i
 
 [Service]
 Type=oneshot
-WorkingDirectory=~/fund
+WorkingDirectory=%h/fund
 Environment=TZ=Asia/Shanghai
 ExecStart=/usr/bin/python3 -m fundana notify --unit %i

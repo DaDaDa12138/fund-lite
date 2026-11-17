@@ -1,6 +1,6 @@
 # 债券型基金筛选系统第五轮审查（2026-11-10）
 
-**审查对象**：`~/fund`（非 git 仓库，Python + SQLite + systemd --user + Web）
+**审查对象**：本仓库（Python + SQLite + systemd --user + Web；本轮审查时尚未纳入版本控制）
 **审查时点**：2026-11-10 17:50 CST
 **审查范围**：筛选链路、周期/窗口抓取、评分与榜单、发布门禁、API/前端、报告模板、调度与日志、近期运行数据；并做外部资料对照。
 **结论口径**：本报告把“已验证的能力”和“仍在影子的假设”分开写；本轮已落地的修复单独标注。
@@ -477,7 +477,7 @@ gen82 折叠：family 33（稳健 31、增强 2）、company 33（稳健 33）�
 ## 附录 B：复现命令
 
 ```bash
-cd ~/fund
+cd "$(git rev-parse --show-toplevel)"
 
 # 全量测试
 cd tests && PYTHONPATH=.. python3 -m unittest discover
